@@ -1,0 +1,13 @@
+[project]
+name = "midas"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "einops>=0.8.1",
+    "imutils>=0.5.4",
+    "numpy>=2.2.6",
+    "opencv-python>=4.11.0.86",
+    "timm>=1.0.22",
+]
