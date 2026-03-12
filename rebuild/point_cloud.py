@@ -1,3 +1,4 @@
+import json
 import os
 import re
 from pathlib import Path
@@ -7,8 +8,8 @@ import numpy as np
 import open3d as o3d
 
 # ------------------ 配置部分 ------------------
-RGB_DIR = "rgb"
-DEPTH_DIR = "depths"
+RGB_DIR = "../midas/frames"
+DEPTH_DIR = "../midas/depths"
 OUTPUT_DIR = "output_pointclouds"
 
 # 深度图缩放因子（非常重要！）
@@ -90,6 +91,7 @@ def load_depth(depth_path: str) -> np.ndarray:
 
 
 def pcd_pipeline():
+    """点云处理流程：读取图像 → 计算 odometry → 保存单帧点云 → 保存 poses"""
 
     # 相机内参（请根据你的实际相机修改！！！）
     width = 1920
@@ -139,16 +141,7 @@ def pcd_pipeline():
             depth_trunc=DEPTH_TRUNC,
             convert_rgb_to_intensity=False,
         )
-        """
-        source_gpu = o3dc.pybind.geometry.RGBDImage.from_legacy(rgbd).to(
-            o3dc.pybind.core.Device("CUDA:0")
-        )
-        target_gpu = o3dc.pybind.geometry.RGBDImage.from_legacy(prev_rgbd).to(
-            o3dc.pybind.core.Device("CUDA:0")
-        )
 
-        intrinsic_gpu = o3dc.pybind.camera.PinholeCameraIntrinsic.from_legacy(intrinsic)
-        """
         # 生成当前帧点云（相机坐标系）
         pcd = o3d.geometry.PointCloud.create_from_rgbd_image(rgbd, intrinsic)
 
@@ -178,25 +171,56 @@ def pcd_pipeline():
 
         prev_rgbd = rgbd
 
-    print("\n处理完成。")
-    print("正在合并所有点云到全局坐标系（可视化用）...")
+    print("\n处理完成，正在保存 poses...")
+
+    # 保存 poses 到文件
+    poses_path = os.path.join(OUTPUT_DIR, "poses.npy")
+    np.save(poses_path, np.array(poses))  # 保存为 Nx4x4 的 numpy 数组
+    print(f"poses 已保存 → {poses_path}")
+
+    return poses
+
+
+def merge_and_visualize(poses=None):
+    """合并所有点云并可视化
+
+    Args:
+        poses: 可选的位姿列表。如果为 None，则从文件加载。
+    """
+    # 加载 poses
+    if poses is None:
+        poses_path = os.path.join(OUTPUT_DIR, "poses.npy")
+        if not os.path.exists(poses_path):
+            raise FileNotFoundError(f"poses 文件不存在: {poses_path}")
+        poses = np.load(poses_path)
+        print(f"从文件加载 poses: {poses_path}")
+
+    print(f"共加载 {len(poses)} 个位姿")
+
+    print("正在合并所有点云到全局坐标系...")
     merged = o3d.geometry.PointCloud()
 
     for i, pose in enumerate(poses):
-        pcd = o3d.io.read_point_cloud(os.path.join(OUTPUT_DIR, f"frame_{i:06d}.ply"))
-        pcd.transform(pose)
-        merged += pcd
+        pcd_path = os.path.join(OUTPUT_DIR, f"frame_{i:06d}.ply")
+        if os.path.exists(pcd_path):
+            pcd = o3d.io.read_point_cloud(pcd_path)
+            pcd.transform(pose)
+            merged += pcd
+        else:
+            print(f"警告：找不到点云文件 {pcd_path}，跳过")
 
     # 降采样（可选，防止内存爆炸）
-    merged = merged.voxel_down_sample(voxel_size=0.02)
+    merged = merged.voxel_down_sample(voxel_size=0.002)
 
-    o3d.visualization.draw_geometries(
+    o3d.visualization.draw_plotly(
         [merged],
         window_name="Merged Point Cloud (with estimated poses)",
-        width=1200,
-        height=800,
     )
 
 
 if __name__ == "__main__":
+    # 运行完整的处理流程
     pcd_pipeline()
+
+    # 单独运行合并和可视化（需要先运行过 pcd_pipeline）
+    merge_and_visualize()
