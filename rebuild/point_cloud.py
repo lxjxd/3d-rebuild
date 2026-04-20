@@ -8,8 +8,8 @@ import numpy as np
 import open3d as o3d
 
 # ------------------ 配置部分 ------------------
-RGB_DIR = "../midas/frames"
-DEPTH_DIR = "../midas/depths"
+RGB_DIR = "./frames"
+DEPTH_DIR = "./depths"
 OUTPUT_DIR = "output_pointclouds"
 
 # 深度图缩放因子（非常重要！）
@@ -24,7 +24,7 @@ DEPTH_TRUNC = 5.0  # 截断深度（米），防止远处的噪声点
 SAVE_EACH_PCD = True
 
 # 是否尝试做帧间 RGB-D odometry
-DO_ODOMETRY = True
+DO_ODOMETRY = False
 # -------------------------------------------
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -74,18 +74,6 @@ def load_depth(depth_path: str) -> np.ndarray:
         if np.any(depth < 0):
             depth = np.abs(depth)  # 有些数据集用负值表示有效深度
         return depth.astype(np.float32)
-    elif ext in [".png", ".jpg"]:
-        # 假设 16bit PNG
-        depth = cv2.imread(depth_path, cv2.IMREAD_UNCHANGED)
-        if depth is None:
-            raise ValueError(f"Cannot read depth image: {depth_path}")
-        if depth.dtype == np.uint16:
-            return depth.astype(np.float32) / 1000.0  # 假设 mm → m
-        elif depth.dtype == np.float32:
-            return depth
-        else:
-            raise ValueError(f"Unexpected depth dtype {depth.dtype} in {depth_path}")
-
     else:
         raise ValueError(f"Unsupported depth format: {ext}")
 
