@@ -1412,6 +1412,7 @@ dependencies = [
     { name = "open3d" },
     { name = "opencv-python" },
     { name = "pillow" },
+    { name = "tqdm" },
 ]
 
 [package.metadata]
@@ -1419,6 +1420,7 @@ requires-dist = [
     { name = "open3d", specifier = ">=0.19.0" },
     { name = "opencv-python", specifier = ">=4.13.0.92" },
     { name = "pillow", specifier = ">=12.1.1" },
+    { name = "tqdm", specifier = ">=4.67.3" },
 ]
 
 [[package]]
