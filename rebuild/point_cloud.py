@@ -10,14 +10,14 @@ import open3d as o3d
 # ------------------ 配置部分 ------------------
 RGB_DIR = "./frames"
 DEPTH_DIR = "./depths"
-OUTPUT_DIR = "output_pointclouds"
+OUTPUT_DIR = "./pointclouds"
 
 # 深度图缩放因子（非常重要！）
 #   Kinect/Azure → 通常 depth_scale=1000.0（mm → m）
 #   RealSense     → 通常 depth_scale=1000.0
 #   TUM RGB-D     → 通常 depth_scale=5000.0 或 1000.0，看数据集说明
 #   自采集数据    → 请确认深度值的单位
-DEPTH_SCALE = 1000.0
+DEPTH_SCALE = 200.0
 DEPTH_TRUNC = 5.0  # 截断深度（米），防止远处的噪声点
 
 # 是否保存每一帧的点云
@@ -30,7 +30,7 @@ DO_ODOMETRY = False
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 
-def read_pfm(file_path):
+def read_pfm(file_path,eps=1e-3):
     with open(file_path, "rb") as f:
         # Read header
         header = f.readline().decode("utf-8").rstrip()
@@ -60,19 +60,24 @@ def read_pfm(file_path):
         # PFM stores data bottom-up
         data = np.reshape(data, shape)
         data = np.flipud(data)
-        return data, scale
+
+        # MiDaS inverse-like depth -> normal depth direction
+        depth = data.max() - data
+
+        print(f"{depth.min()}, {depth.max()}")
+
+
+        return depth, scale
 
 
 def load_depth(depth_path: str) -> np.ndarray:
-    """支持 .png (16bit) 和 .pfm 格式的深度图"""
+    """支持 .pfm 格式的深度图"""
     ext = Path(depth_path).suffix.lower()
 
     if ext == ".pfm":
         # 读取 pfm 格式（常见于 Blender、TUM部分序列、一些合成数据集）
         depth = read_pfm(depth_path)[0]  # 返回 (depth_array, scale)
         # pfm 通常已经是浮点米单位，但有时需要检查正负
-        if np.any(depth < 0):
-            depth = np.abs(depth)  # 有些数据集用负值表示有效深度
         return depth.astype(np.float32)
     else:
         raise ValueError(f"Unsupported depth format: {ext}")
@@ -82,12 +87,12 @@ def pcd_pipeline():
     """点云处理流程：读取图像 → 计算 odometry → 保存单帧点云 → 保存 poses"""
 
     # 相机内参（请根据你的实际相机修改！！！）
-    width = 1920
-    height = 1440
-    fx = 1400
-    fy = 1400
-    cx = width / 2
-    cy = height / 2
+    width = 1080
+    height = 1920
+    fx = 1034.6526
+    fy = 1032.5281
+    cx = 535.2761
+    cy = 721.7751
 
     intrinsic = o3d.camera.PinholeCameraIntrinsic(
         width=width, height=height, fx=fx, fy=fy, cx=cx, cy=cy
@@ -169,46 +174,9 @@ def pcd_pipeline():
     return poses
 
 
-def merge_and_visualize(poses=None):
-    """合并所有点云并可视化
-
-    Args:
-        poses: 可选的位姿列表。如果为 None，则从文件加载。
-    """
-    # 加载 poses
-    if poses is None:
-        poses_path = os.path.join(OUTPUT_DIR, "poses.npy")
-        if not os.path.exists(poses_path):
-            raise FileNotFoundError(f"poses 文件不存在: {poses_path}")
-        poses = np.load(poses_path)
-        print(f"从文件加载 poses: {poses_path}")
-
-    print(f"共加载 {len(poses)} 个位姿")
-
-    print("正在合并所有点云到全局坐标系...")
-    merged = o3d.geometry.PointCloud()
-
-    for i, pose in enumerate(poses):
-        pcd_path = os.path.join(OUTPUT_DIR, f"frame_{i:06d}.ply")
-        if os.path.exists(pcd_path):
-            pcd = o3d.io.read_point_cloud(pcd_path)
-            pcd.transform(pose)
-            merged += pcd
-        else:
-            print(f"警告：找不到点云文件 {pcd_path}，跳过")
-
-    # 降采样（可选，防止内存爆炸）
-    merged = merged.voxel_down_sample(voxel_size=0.002)
-
-    o3d.visualization.draw_plotly(
-        [merged],
-        window_name="Merged Point Cloud (with estimated poses)",
-    )
-
-
 if __name__ == "__main__":
     # 运行完整的处理流程
     pcd_pipeline()
 
     # 单独运行合并和可视化（需要先运行过 pcd_pipeline）
-    merge_and_visualize()
+    #merge_and_visualize()
